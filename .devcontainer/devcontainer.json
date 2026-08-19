@@ -1,0 +1,9 @@
+{
+  "name": "webhook-ingest",
+  "image": "mcr.microsoft.com/devcontainers/go:1.25",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [8080, 5432, 6379],
+  "postCreateCommand": "go mod download"
+}
