@@ -35,8 +35,8 @@ func post(t *testing.T, url, body string) *http.Response {
 }
 
 func TestWebhookStoresEventAndCall(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	eventID, callID, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	eventID, callID, accountID := testutil.IDs(t, st, rdb)
 	ctx := context.Background()
 
 	body := eventJSON(eventID, callID, accountID)
@@ -63,8 +63,8 @@ func TestWebhookStoresEventAndCall(t *testing.T) {
 }
 
 func TestDuplicateDeliveryIsIgnored(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	eventID, callID, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	eventID, callID, accountID := testutil.IDs(t, st, rdb)
 	ctx := context.Background()
 
 	body := eventJSON(eventID, callID, accountID)
@@ -101,8 +101,8 @@ func TestDuplicateDeliveryIsIgnored(t *testing.T) {
 // request's context, which was cancelled after the 200 response — so the
 // UPDATE never ran and no error was logged.
 func TestRecordingGetsProcessed(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	eventID, callID, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	eventID, callID, accountID := testutil.IDs(t, st, rdb)
 	ctx := context.Background()
 
 	body := eventJSON(eventID, callID, accountID)

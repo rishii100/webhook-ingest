@@ -20,7 +20,7 @@ func post(t *testing.T, url, body string) *http.Response {
 }
 
 func TestHealthz(t *testing.T) {
-	srv, _ := testutil.NewServer(t)
+	srv, _, _ := testutil.NewServer(t)
 
 	resp, err := http.Get(srv.URL + "/healthz")
 	if err != nil {
@@ -34,7 +34,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestWebhookRejectsMalformedJSON(t *testing.T) {
-	srv, _ := testutil.NewServer(t)
+	srv, _, _ := testutil.NewServer(t)
 
 	resp := post(t, srv.URL+"/webhooks/calls", `{not json`)
 	if resp.StatusCode != http.StatusBadRequest {
@@ -43,8 +43,8 @@ func TestWebhookRejectsMalformedJSON(t *testing.T) {
 }
 
 func TestWebhookRejectsMissingEventID(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	_, callID, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	_, callID, accountID := testutil.IDs(t, st, rdb)
 
 	body := fmt.Sprintf(
 		`{"call_id":%q,"account_id":%q,"status":"completed","duration_sec":10}`,
@@ -56,8 +56,8 @@ func TestWebhookRejectsMissingEventID(t *testing.T) {
 }
 
 func TestWebhookRejectsUnknownStatus(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	eventID, callID, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	eventID, callID, accountID := testutil.IDs(t, st, rdb)
 
 	body := fmt.Sprintf(
 		`{"event_id":%q,"call_id":%q,"account_id":%q,"status":"exploded","duration_sec":10}`,
@@ -69,8 +69,8 @@ func TestWebhookRejectsUnknownStatus(t *testing.T) {
 }
 
 func TestAccountStatsEndpointRespondsJSON(t *testing.T) {
-	srv, st := testutil.NewServer(t)
-	_, _, accountID := testutil.IDs(t, st)
+	srv, st, rdb := testutil.NewServer(t)
+	_, _, accountID := testutil.IDs(t, st, rdb)
 
 	resp, err := http.Get(srv.URL + "/accounts/" + accountID + "/stats")
 	if err != nil {

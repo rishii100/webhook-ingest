@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/convin/webhook-ingest/internal/config"
 	"github.com/convin/webhook-ingest/internal/httpapi"
 	"github.com/convin/webhook-ingest/internal/ingest"
@@ -24,7 +26,10 @@ import (
 // database, so tests must never truncate shared tables. Every row carries an
 // account_id, so deleting by account removes exactly this test's data and
 // nothing else.
-func IDs(t *testing.T, s *store.Store) (eventID, callID, accountID string) {
+//
+// If a Redis client is provided, the dedup key for the event is also deleted
+// so that the shared Redis does not interfere across test runs.
+func IDs(t *testing.T, s *store.Store, rdbOptional ...*redis.Client) (eventID, callID, accountID string) {
 	t.Helper()
 	base := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
 	eventID, callID, accountID = "evt_"+base, "call_"+base, "acc_"+base
@@ -36,6 +41,10 @@ func IDs(t *testing.T, s *store.Store) (eventID, callID, accountID string) {
 				"DELETE FROM "+table+" WHERE account_id = $1", accountID); err != nil {
 				t.Fatalf("clean %s: %v", table, err)
 			}
+		}
+		// Clean up Redis dedup key so tests are hermetic across runs.
+		if len(rdbOptional) > 0 && rdbOptional[0] != nil {
+			_ = rdbOptional[0].Del(ctx, "event:"+eventID).Err()
 		}
 	}
 	clean()
@@ -58,8 +67,9 @@ func NewStore(t *testing.T) *store.Store {
 }
 
 // NewServer starts an in-process HTTP server backed by the configured
-// Postgres and Redis, and returns it alongside the store for assertions.
-func NewServer(t *testing.T) (*httptest.Server, *store.Store) {
+// Postgres and Redis, and returns it alongside the store and Redis client
+// for assertions and cleanup.
+func NewServer(t *testing.T) (*httptest.Server, *store.Store, *redis.Client) {
 	t.Helper()
 	cfg := config.Load()
 
@@ -76,5 +86,5 @@ func NewServer(t *testing.T) (*httptest.Server, *store.Store) {
 
 	srv := httptest.NewServer(httpapi.NewRouter(svc, log))
 	t.Cleanup(srv.Close)
-	return srv, s
+	return srv, s, rdb
 }
