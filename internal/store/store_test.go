@@ -26,8 +26,12 @@ func TestInsertEventThenExists(t *testing.T) {
 		t.Fatal("expected event to be absent before insert")
 	}
 
-	if err := s.InsertEvent(ctx, evt); err != nil {
+	inserted, err := s.InsertEvent(ctx, evt)
+	if err != nil {
 		t.Fatalf("InsertEvent: %v", err)
+	}
+	if !inserted {
+		t.Fatal("expected InsertEvent to return true for a new event")
 	}
 
 	exists, err = s.EventExists(ctx, eventID)
@@ -36,6 +40,15 @@ func TestInsertEventThenExists(t *testing.T) {
 	}
 	if !exists {
 		t.Fatal("expected event to exist after insert")
+	}
+
+	// Inserting the same event_id again should be a no-op.
+	inserted2, err := s.InsertEvent(ctx, evt)
+	if err != nil {
+		t.Fatalf("InsertEvent (dup): %v", err)
+	}
+	if inserted2 {
+		t.Fatal("expected InsertEvent to return false for a duplicate event_id")
 	}
 }
 

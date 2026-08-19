@@ -45,13 +45,24 @@ func (s *Service) Stats(accountID string) stats.AccountStats {
 
 // Ingest stores a delivery and kicks off processing. Processing runs
 // asynchronously so the provider gets a fast acknowledgement.
+//
+// Idempotency is guaranteed by two layers:
+//  1. Redis SET NX — fast-path dedup that avoids hitting Postgres for
+//     known redeliveries. The key expires after 24 hours.
+//  2. Postgres UNIQUE constraint on event_id with INSERT … ON CONFLICT
+//     DO NOTHING — durable guarantee that survives Redis restarts.
 func (s *Service) Ingest(ctx context.Context, evt Event) error {
-	exists, err := s.store.EventExists(ctx, evt.EventID)
+	// Layer 1: Redis fast-path dedup.
+	// SET key NX EX 86400 — only succeeds if the key does not already exist.
+	dedupKey := "event:" + evt.EventID
+	set, err := s.rdb.SetNX(ctx, dedupKey, "1", 24*time.Hour).Result()
 	if err != nil {
-		return err
-	}
-	if exists {
-		s.log.Info("duplicate delivery ignored", "event_id", evt.EventID)
+		// Redis errors are not fatal — fall through to Postgres dedup.
+		s.log.Warn("redis dedup check failed, falling through to postgres",
+			"event_id", evt.EventID, "err", err)
+	} else if !set {
+		// Key already existed — this is a known redelivery.
+		s.log.Info("duplicate delivery rejected by redis", "event_id", evt.EventID)
 		return nil
 	}
 
@@ -70,9 +81,20 @@ func (s *Service) Ingest(ctx context.Context, evt Event) error {
 		OccurredAt:   evt.OccurredAt,
 		Payload:      payload,
 	}
-	if err := s.store.InsertEvent(ctx, rec); err != nil {
+
+	// Layer 2: Postgres INSERT … ON CONFLICT (event_id) DO NOTHING.
+	// Returns true only if the row was actually inserted.
+	inserted, err := s.store.InsertEvent(ctx, rec)
+	if err != nil {
 		return err
 	}
+	if !inserted {
+		// Another concurrent request inserted this event_id between our
+		// Redis check and this INSERT — safe to bail out.
+		s.log.Info("duplicate delivery rejected by postgres", "event_id", evt.EventID)
+		return nil
+	}
+
 	if err := s.store.UpsertCall(ctx, rec); err != nil {
 		return err
 	}

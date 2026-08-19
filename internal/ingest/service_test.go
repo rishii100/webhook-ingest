@@ -74,6 +74,7 @@ func TestDuplicateDeliveryIsIgnored(t *testing.T) {
 		}
 	}
 
+	// Only one event row should exist.
 	var n int
 	row := st.Pool().QueryRow(ctx, `SELECT count(*) FROM events WHERE event_id = $1`, eventID)
 	if err := row.Scan(&n); err != nil {
@@ -81,6 +82,17 @@ func TestDuplicateDeliveryIsIgnored(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("stored %d copies of %s, want 1", n, eventID)
+	}
+
+	// Account stats should reflect exactly one call, not three.
+	var callCount int64
+	statsRow := st.Pool().QueryRow(ctx,
+		`SELECT call_count FROM account_stats WHERE account_id = $1`, accountID)
+	if err := statsRow.Scan(&callCount); err != nil {
+		t.Fatalf("scan account_stats: %v", err)
+	}
+	if callCount != 1 {
+		t.Fatalf("account_stats call_count = %d, want 1 (duplicates were counted)", callCount)
 	}
 }
 
