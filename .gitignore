@@ -1,3 +1,31 @@
+# Binaries
 /server
 /bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build/test artifacts
+*.test
+*.out
+*.prof
+/vendor/
+
+# Environment
 .env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+*.log
+
+# OS
+Thumbs.db
