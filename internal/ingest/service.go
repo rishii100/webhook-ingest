@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -22,11 +23,19 @@ type Service struct {
 	cache *stats.Cache
 	rdb   *redis.Client
 	log   *slog.Logger
+	wg    sync.WaitGroup
 }
 
 // New builds a Service.
 func New(s *store.Store, c *stats.Cache, rdb *redis.Client, log *slog.Logger) *Service {
 	return &Service{store: s, cache: c, rdb: rdb, log: log}
+}
+
+// Wait blocks until all background goroutines (e.g. recording processing)
+// have finished. Call this during graceful shutdown after the HTTP server has
+// stopped accepting new requests.
+func (s *Service) Wait() {
+	s.wg.Wait()
 }
 
 // Stats returns the cached totals for an account.
@@ -73,10 +82,19 @@ func (s *Service) Ingest(ctx context.Context, evt Event) error {
 	s.cache.Record(rec.AccountID, rec.DurationSec)
 
 	// Recordings are slow to fetch, so that part does not block the provider.
+	// We use context.Background() because the request context (r.Context())
+	// is cancelled as soon as the HTTP handler returns, which would cause the
+	// DB update in MarkRecordingProcessed to fail with context.Canceled.
 	if rec.RecordingURL != "" {
+		s.wg.Add(1)
 		go func() {
-			if err := s.processRecording(ctx, rec); err != nil {
-				// TODO: handle
+			defer s.wg.Done()
+			if err := s.processRecording(context.Background(), rec); err != nil {
+				s.log.Error("process recording failed",
+					"call_id", rec.CallID,
+					"event_id", rec.EventID,
+					"err", err,
+				)
 			}
 		}()
 	}
